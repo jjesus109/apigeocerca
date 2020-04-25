@@ -1,28 +1,48 @@
+import logging
+import time
+import re
+
+import numpy as np
+from fastkml import kml
+import firebase_admin
+from firebase_admin import db
 from flask import Flask, jsonify, abort
 from flask import request, make_response
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import db
-from fastkml import kml
-import numpy as np
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 
-#export GOOGLE_APPLICATION_CREDENTIALS="./../Recursos/firecargamos-firebase-adminsdk-uwn8s-9eb9c1f934.json"
-#cred = credentials.Certificate("./../Recursos/firecargamos-firebase-adminsdk-uwn8s-9eb9c1f934.json")
-#firebase_admin.initialize_app(cred,{
-#    'databaseURL': 'https://firecargamos.firebaseio.com/'
-#}
-# Init database
+format = "%(asctime)s: %(message)s"
+logging.basicConfig(format=format, 
+    level=logging.INFO, 
+    datefmt="[%Y-%m-%d %H:%M:%S]")
+
+
+
+
 firebase_admin.initialize_app()
+intentos = 1
+
 # establish connection to parent
-geocercas = db.reference(path="geocerca",url='https://firecargamos.firebaseio.com/')
+while True:
+    try:
+        geocercas = db.reference(path="geocerca",url='https://firecargamos.firebaseio.com/')
+        geocercas.get()
+        logging.info("INFO: Connected to database succesfully")
+        break
+    except:
+        logging.info("INFO: Could not connect to database")
+        logging.info("INFO: Retrying . . .")
+        time.sleep(3)
+        intentos += 1
+    if intentos>3:
+        logging.info("INFO: Exiting")
+        exit(0)
+
 # Create kml object 
 k = kml.KML()
 
 app = Flask(__name__)
 
-from pykml import parser
 @app.route('/api/v1/geocerca', methods=['POST'])
 def set_geocerca():
     # Obtain recevied data
@@ -41,64 +61,66 @@ def set_geocerca():
     features = list(k.features())
     # features of secondary tree
     featureofF = list(features[0].features())
+    # GObtain name of placemark
     alias = featureofF[0].name 
-    nombres  = geocercas.get()
-    """
-    if alias in nombres:
-        print("Ya esta en la database nombre de area")
-        response = {"errorMessage":
-                    "Nombre de area ya se encuentra en la base de datos"}
-        return make_response(jsonify(response),400)   
-    """
-    print(f"alias : {alias}")
-    print(f"alias : {type(alias)}")
-
-    # sobtain data from Polygon
+    # push data in db
+    elementpushed = geocercas.push({"alias":alias}) 
+    idAlias = elementpushed.key
+    # Obtain data from Polygon
     tree = featureofF[0].geometry
     # Convert into str 
     dataPolygon = tree.wkt
+    # search for parenthesis for remove from string
+    parentesis = re.search(r'[(]',dataPolygon)
     # formatted data 
-    # TODO definir nombr de geometria para tomar datos
-    # de esa figura y filtrarlo en el string
-    dataPolygon = dataPolygon[9:-2]
+    dataPolygon = dataPolygon[parentesis.start()+2:-2]
     # Separate str int list
     coordinates = dataPolygon.split(', ') 
-    # split each element of lists 
+    
     # in lat and long attributes
     newCoordinates = []
     for co in coordinates:
-        # Avoid altitude 
-        coordinate= co[:-4].split(' ') 
-        newCoordinates.append(coordinate)
-    print(f"coor {newCoordinates}")
+        # Avoid altitude the last 4 elements
+        coordinate= co.split(' ') 
+        newCoordinates.append(coordinate[:-1])
+    logging.info(f"INFO: Coordinates pushed: \n{newCoordinates}")
 
     # push data in db
     for coordinate in newCoordinates:
         puntos ={"lng":coordinate[0],
                  "lat":coordinate[1]}
-        geocercas.child(alias).push(puntos) 
-    puntos = db.reference(path="geocerca/"+alias,
-        url='https://firecargamos.firebaseio.com/')
-    print(f"puntos {puntos.get()}")
-    print(f"geocercas {geocercas.get()}")
+        try:
+            geocercas.child(idAlias).child("puntos").push(puntos) 
+        except ValueError as ve:
+            logging.info(f"ERROR: {ve}")    
+        except FirebaseError as fe:
+            logging.info(f"ERROR: {fe}")    
 
-    return make_response(jsonify({"ALL":"GOOD"}),201)
+    logging.info("OUTPUT: Coordinates pushed on database")    
+    return make_response(jsonify({}),201)
 
 @app.route('/api/v1/deteccion', methods=['GET'])
 def get_deteccion():
+    # Obtain data from incoming json
     data = request.json
-    lt = data["lat"]
-    lg = data["lng"]
+    try:
+        lt = data["lat"]
+        lg = data["lng"]
+    except:
+        response = {"errorMessage":"Empty body"}
+        return make_response(jsonify(response),400)
+    logging.info(f"INPUT: lat: {lt}, lng: {lg}")
     nombres  = geocercas.get()
-    print(f"Nombres : {nombres}")
-    print(f"Nombres TYPE: {type(nombres)}")
-
-    aliasGeocercas = list(nombres.keys())
-    print(f"aliasGeocercas : {aliasGeocercas}")
+    idAliasGeocercas = list(nombres.keys())
     results = []
     # Obtain data from each geocerca
-    for ngeo in aliasGeocercas:
-        coordenadas = nombres[ngeo]
+    for idAl in idAliasGeocercas:
+        # Get json from each document
+        datosArea = nombres[idAl]
+        # obtain puntos and alias data
+        coordenadas = datosArea["puntos"]
+        aliasActual = datosArea["alias"]
+        # Gt keys for iterate over puntos dict
         idcoordenadas = list(coordenadas.keys())
         puntosArea = []
         lngs = []
@@ -106,24 +128,24 @@ def get_deteccion():
         # obtain points from area
         for puntos in idcoordenadas:
             punto = coordenadas[puntos]
-            x_y = [punto["lng"],punto["lat"]]
             lngs.append(punto["lng"])
             lats.append(punto["lat"])
-            puntosArea.append(x_y)
+        # Convert to vector 
         lats = np.asarray(lats)
         lngs = np.asarray(lngs)
-        print(f"Puntos de {ngeo}")
-        print(puntosArea)
-        # evaluate pints on shapely
-        lons_lats_vect = np.column_stack((lngs, lats)) # Reshape coordinates
-        polygon = Polygon(lons_lats_vect) # create polygon
-
-        point = Point(lt,lg) # create point
+        # Convert to 2D matrix rotating vector to columns
+        lng_lat = np.column_stack((lngs, lats)) 
+        # Creae polygon an point
+        polygon = Polygon(lng_lat) 
+        point = Point(lg,lt) 
+        # Evaluate points on shapely
         contains = polygon.contains(point)
-        print(f"polygon contains: {contains}") 
         if contains:
-            results.append()
-        print("********************")
+            results.append({
+                "id":idAl,
+                "alias":aliasActual
+                })
+    logging.info(f"OUTPUT: {results}")        
     # Get data from dicts in list
     return make_response(jsonify({"results":results}),200)
     
