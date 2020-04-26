@@ -41,26 +41,28 @@ class TestCase(unittest.TestCase):
             content_type='application/json'
             )
     def enviar_archivo(self):
+        kmlfile = ""
         with open("./../Recursos/Coyoacan.kml",'rb') as archivo:
-            kmlfile = archivo
+            kmlfile = archivo.read()
 
         return self.app.post(
             '/api/v1/geocerca',
-            data={"file":(BytesIO(bytes(kmlfile)))},
+            data={"archivokml":(BytesIO(kmlfile),"./../Recursos/Coyoacan.kml")},
             content_type='multipart/form-data'
             )
-    def pretest_insertar_geocerca(self):
+    def test_insertar_geocerca(self):
         
         lat = 19.35775
         lng = -99.146383 
         # Verify geofence in db before push new data
         logging.info("INFO: Lista de Geocercas antes de insertar datos")
         self.app.get('/api/v1/geocerca')
+        logging.info("INFO: Insertando datos")
         response = self.enviar_archivo()
         logging.info("INFO: Lista de Geocercas despues de insertar datos")
         self.app.get('/api/v1/geocerca')
         # Verify geofence in db after push new data
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
     
     def test_dentro_geocerca(self):
         

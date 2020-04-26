@@ -54,6 +54,7 @@ def set_geocerca():
         kml = request.files
     except:
         response = {"errorMessage":"No se pudo leer el archivo"}
+        logging.info("INFO: Cannot read file")
         return make_response(jsonify(response),400)   
         
     kml = kml["archivokml"]
