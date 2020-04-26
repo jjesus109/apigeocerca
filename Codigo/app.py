@@ -158,7 +158,6 @@ def get_deteccion():
 def get_geocercas():
     nombres  = geocercas.get()
     idAliasGeocercas = list(nombres.keys())
-    logging.info(f"INFO: Lista de Areas en db\n------\n")
     results = []
     for idAl in idAliasGeocercas:
         # Get json from each document

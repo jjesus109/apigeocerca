@@ -55,9 +55,9 @@ class TestCase(unittest.TestCase):
         lat = 19.35775
         lng = -99.146383 
         # Verify geofence in db before push new data
+        logging.info("TEST de insertar geocerca en DB")
         logging.info("INFO: Lista de Geocercas antes de insertar datos")
         self.app.get('/api/v1/geocerca')
-        logging.info("INFO: Insertando datos")
         response = self.enviar_archivo()
         logging.info("INFO: Lista de Geocercas despues de insertar datos")
         self.app.get('/api/v1/geocerca')
@@ -65,13 +65,13 @@ class TestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
     
     def test_dentro_geocerca(self):
-        
+        logging.info("TEST de punto dentro de geocerca")
         lat = 19.350205
         lng = -99.158217 
         response = self.deteccion(lat,lng)
         self.assertEqual(response.status_code, 200)
     def test_fuera_geocerca(self):
-        
+        logging.info("TEST de punto fuera de geocerca")
         lat = 19.35775
         lng = -99.146383 
         response = self.deteccion(lat,lng)
