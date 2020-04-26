@@ -6,6 +6,7 @@ import numpy as np
 from fastkml import kml
 import firebase_admin
 from firebase_admin import db
+from firebase_admin import credentials
 from flask import Flask, jsonify, abort
 from flask import request, make_response
 from shapely.geometry import Point
@@ -19,7 +20,10 @@ logging.basicConfig(format=format,
 
 
 
-firebase_admin.initialize_app()
+cred = credentials.Certificate("./../Recursos/firecargamos-firebase-adminsdk-uwn8s-9eb9c1f934.json")
+firebase_admin.initialize_app(cred,{
+    'databaseURL': 'https://firecargamos.firebaseio.com/'
+})
 intentos = 1
 
 # establish connection to parent
@@ -99,7 +103,7 @@ def set_geocerca():
     logging.info("OUTPUT: Coordinates pushed on database")    
     return make_response(jsonify({}),201)
 
-@app.route('/api/v1/deteccion', methods=['GET'])
+@app.route('/api/v1/deteccion', methods=['POST'])
 def get_deteccion():
     # Obtain data from incoming json
     data = request.json
@@ -148,7 +152,23 @@ def get_deteccion():
     logging.info(f"OUTPUT: {results}")        
     # Get data from dicts in list
     return make_response(jsonify({"results":results}),200)
-    
 
+@app.route('/api/v1/geocerca', methods=['GET'])
+def get_geocercas():
+    nombres  = geocercas.get()
+    idAliasGeocercas = list(nombres.keys())
+    logging.info(f"INFO: Lista de Areas en db\n------\n")
+    results = []
+    for idAl in idAliasGeocercas:
+        # Get json from each document
+        datosArea = nombres[idAl]
+        aliasActual = datosArea["alias"]
+        logging.info(f"INFO: ID Alias {idAl}")        
+        logging.info(f"INFO: Alias {aliasActual}")
+        results.append({
+                "id":idAl,
+                "alias":aliasActual
+                })        
+    return make_response(jsonify({"GeocercasDB":results}),200)
 if __name__ == '__main__':
     app.run(debug=True)
